@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from loguru import logger
 from pydantic import BaseModel
@@ -67,6 +68,7 @@ class MetadataStore:
         self._engine: AsyncEngine | None = None
 
     async def init(self) -> None:
+        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         url = f"sqlite+aiosqlite:///{self._db_path}"
         self._engine = create_async_engine(url, future=True)
         event.listen(self._engine.sync_engine, "connect", _enable_fk)

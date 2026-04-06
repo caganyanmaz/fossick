@@ -93,6 +93,9 @@ class FileWatcher:
         handler = _IngestEventHandler(self._queue, self._pipeline, loop)
         self._observer = Observer()
         for directory in self._directories:
+            if not Path(directory).exists():
+                logger.warning("Watched directory does not exist, skipping: {}", directory)
+                continue
             self._observer.schedule(handler, directory, recursive=True)
             logger.info(f"Watching directory: {directory}")
         self._observer.start()

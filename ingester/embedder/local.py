@@ -8,7 +8,11 @@ from ingester.embedder.base import BaseEmbedder
 class LocalEmbedder(BaseEmbedder):
     def __init__(self, config: LocalEmbeddingConfig) -> None:
         logger.info("Loading local embedding model: {}", config.model)
-        self._model = SentenceTransformer(config.model)
+        try:
+            self._model = SentenceTransformer(config.model, local_files_only=True)
+        except Exception:
+            logger.info("Model not cached, downloading: {}", config.model)
+            self._model = SentenceTransformer(config.model)
         self._batch_size = config.batch_size
 
     def embed(self, texts: list[str]) -> list[list[float]]:

@@ -1,0 +1,47 @@
+# Copy to config.yaml and fill in values
+
+watched_dirs:
+  - /home/user/documents
+  - /home/user/projects
+
+qdrant:
+  host: localhost
+  port: 6333
+  collection: file_index
+  on_disk_vectors: true      # keeps RAM usage low
+  quantization: scalar_int8  # 4x less RAM, ~2% quality loss
+
+sqlite:
+  path: ./data/index.db
+
+embedding:
+  backend: local             # "local" or "api"
+  local:
+    model: all-MiniLM-L6-v2  # ~90MB RAM; swap to "nomic-ai/nomic-embed-text-v1.5" for quality
+    batch_size: 32
+  api:
+    provider: openai         # "openai" | "voyageai"
+    model: text-embedding-3-small
+    api_key: ""              # or set EMBEDDING_API_KEY env var
+
+llm:
+  backend: api               # "api" or "local"
+  api:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    api_key: ""              # or set LLM_API_KEY env var
+  local:
+    model: llama3.2:3b
+    ollama_host: http://localhost:11434
+
+ocr:
+  backend: tesseract         # "tesseract" (local, via Docling) or "api"
+
+video:
+  keyframes: 10              # number of evenly-spaced frames to caption
+  caption_backend: local     # "local" (moondream2 via Ollama) or "api"
+  transcription_backend: api # "api" (Whisper API) — local is too RAM-heavy
+
+scheduler:
+  watch_interval_seconds: 300   # check for changes every 5 min
+  full_rescan_cron: "0 3 * * *" # full rescan at 3am daily

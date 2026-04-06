@@ -218,15 +218,24 @@ class MetadataStore:
             )
         logger.debug("deleted file path={}", path)
 
-    async def get_all_files(self, limit: int = 50, offset: int = 0) -> list[FileRecord]:
+    async def get_all_files(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        filetype: str | None = None,
+    ) -> list[FileRecord]:
+        where = " WHERE filetype=:filetype" if filetype is not None else ""
+        params: dict[str, object] = {"limit": limit, "offset": offset}
+        if filetype is not None:
+            params["filetype"] = filetype
         async with self._eng.begin() as conn:
             result = await conn.execute(
                 text(
                     "SELECT id, path, hash, filetype, size_bytes, created_at,"
-                    " modified_at, indexed_at, status FROM files"
+                    f" modified_at, indexed_at, status FROM files{where}"
                     " ORDER BY id LIMIT :limit OFFSET :offset"
                 ),
-                {"limit": limit, "offset": offset},
+                params,
             )
             rows = result.fetchall()
         return [
@@ -243,3 +252,12 @@ class MetadataStore:
             )
             for r in rows
         ]
+
+    async def count_files(self) -> int:
+        async with self._eng.begin() as conn:
+            result = await conn.execute(text("SELECT COUNT(*) FROM files"))
+            return int(result.scalar() or 0)
+
+    async def close(self) -> None:
+        if self._engine is not None:
+            await self._engine.dispose()

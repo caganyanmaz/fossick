@@ -27,7 +27,7 @@ class CodeParser(BaseParser):
 
         try:
             lexer = get_lexer_for_filename(str(p))
-            language = lexer.name
+            language = lexer.name  # type: ignore[attr-defined]
         except ClassNotFound:
             language = "text"
 

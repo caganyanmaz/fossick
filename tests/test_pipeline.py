@@ -8,7 +8,7 @@ import pytest_asyncio
 
 from ingester.config import QdrantConfig
 from ingester.embedder.base import BaseEmbedder
-from ingester.pipeline import IngestResult, Pipeline
+from ingester.pipeline import Pipeline
 from ingester.store.metadata import MetadataStore
 from ingester.store.vector import VectorStore
 

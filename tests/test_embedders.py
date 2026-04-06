@@ -6,7 +6,6 @@ API embedder tests mock httpx.Client.post — no real network calls are made.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest

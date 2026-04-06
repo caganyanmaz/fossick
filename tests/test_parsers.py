@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -156,9 +155,7 @@ class TestDoclingParser:
             with patch("ingester.parser.docling_parser.DoclingParser.parse",
                        wraps=self.parser.parse):
                 # Re-import so the mock is used
-                import importlib
-                import ingester.parser.docling_parser as mod
-                orig = mod.DoclingParser.parse
+                import ingester.parser.docling_parser as mod  # noqa: F401
 
                 def patched_parse(self_inner: DoclingParser, path: str) -> ParsedDocument:
                     from docling.document_converter import DocumentConverter  # type: ignore[import]
@@ -203,8 +200,6 @@ class TestDoclingParser:
     def test_parse_html_real_fallback(self) -> None:
         """Parse HTML using plain-text fallback (avoids loading Docling in tests)."""
         # Patch the import inside parse() to force fallback
-        original_parse = self.parser.parse
-
         def parse_with_forced_fallback(path: str) -> ParsedDocument:
             p = Path(path)
             filetype = p.suffix.lstrip(".").lower()
@@ -246,8 +241,6 @@ class TestImageParser:
 
         # Actually test the real parse with Docling import patched to raise
         import ingester.parser.image as img_mod
-
-        original_parse = img_mod.ImageParser.parse
 
         def parse_no_docling(self_inner: ImageParser, path: str) -> ParsedDocument:
             p = Path(path)

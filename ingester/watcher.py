@@ -13,6 +13,7 @@ from watchdog.events import (
     FileSystemEventHandler,
 )
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver
 
 if TYPE_CHECKING:
     from ingester.pipeline import Pipeline
@@ -39,22 +40,29 @@ class _IngestEventHandler(FileSystemEventHandler):
         name = Path(path).name
         return name.startswith(_IGNORED_PREFIXES) or name.endswith(_IGNORED_SUFFIXES)
 
+    @staticmethod
+    def _as_str(path: str | bytes) -> str:
+        return path.decode() if isinstance(path, bytes) else path
+
     def on_created(self, event: FileCreatedEvent) -> None:  # type: ignore[override]
-        if event.is_directory or self._should_ignore(event.src_path):
+        src = self._as_str(event.src_path)
+        if event.is_directory or self._should_ignore(src):
             return
-        self._enqueue(event.src_path)
+        self._enqueue(src)
 
     def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
-        if event.is_directory or self._should_ignore(event.src_path):
+        src = self._as_str(event.src_path)
+        if event.is_directory or self._should_ignore(src):
             return
-        self._enqueue(event.src_path)
+        self._enqueue(src)
 
     def on_deleted(self, event: FileDeletedEvent) -> None:  # type: ignore[override]
-        if event.is_directory or self._should_ignore(event.src_path):
+        src = self._as_str(event.src_path)
+        if event.is_directory or self._should_ignore(src):
             return
-        logger.info(f"File deleted, removing from index: {event.src_path}")
+        logger.info("File deleted, removing from index: {}", src)
         asyncio.run_coroutine_threadsafe(
-            self._pipeline.delete(event.src_path), self._loop
+            self._pipeline.delete(src), self._loop
         )
 
     def _enqueue(self, path: str) -> None:
@@ -78,7 +86,7 @@ class FileWatcher:
         self._directories = directories
         self._queue = event_queue
         self._pipeline = pipeline
-        self._observer: Observer | None = None
+        self._observer: BaseObserver | None = None
 
     def start(self) -> None:
         loop = asyncio.get_event_loop()

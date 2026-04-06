@@ -51,7 +51,7 @@ async def test_set_file_status(store: MetadataStore) -> None:
 @pytest.mark.asyncio
 async def test_get_files_needing_reindex(store: MetadataStore) -> None:
     id1 = await store.upsert_file("/docs/d.txt", "h1", "txt", None, None)
-    id2 = await store.upsert_file("/docs/e.txt", "h2", "txt", None, None)
+    await store.upsert_file("/docs/e.txt", "h2", "txt", None, None)
     await store.set_file_status(id1, "indexed")
     await store.upsert_file("/docs/f.txt", "h3", "txt", None, None)  # stays pending
 

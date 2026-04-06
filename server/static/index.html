@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Ingester</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    /* Ensure dark background even before Tailwind loads */
+    body { background-color: #111827; color: #f3f4f6; }
+    .tab-active { border-bottom: 2px solid #3b82f6; color: #60a5fa; }
+    .score-bar { transition: width 0.3s ease; }
+    .prose-dark a { color: #60a5fa; }
+    .prose-dark code { background: #1f2937; padding: 0.1rem 0.3rem; border-radius: 0.25rem; }
+    .prose-dark pre { background: #1f2937; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between">
+    <h1 class="text-lg font-semibold text-blue-400">File Ingester</h1>
+    <span id="health-badge" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-400">loading…</span>
+  </header>
+
+  <!-- Tab bar -->
+  <nav class="bg-gray-800 border-b border-gray-700 px-6 flex gap-6">
+    <button onclick="showTab('search')" id="tab-btn-search" class="py-3 text-sm font-medium tab-active">Search</button>
+    <button onclick="showTab('chat')" id="tab-btn-chat" class="py-3 text-sm font-medium text-gray-400 hover:text-gray-200">Chat</button>
+    <button onclick="showTab('files')" id="tab-btn-files" class="py-3 text-sm font-medium text-gray-400 hover:text-gray-200">Files</button>
+  </nav>
+
+  <!-- Main content -->
+  <main class="max-w-5xl mx-auto px-4 py-6">
+
+    <!-- ===== SEARCH TAB ===== -->
+    <div id="tab-search">
+      <form id="search-form" class="flex gap-2 mb-4" onsubmit="doSearch(event)">
+        <input id="search-q" type="text" placeholder="Search your files…"
+          class="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        <select id="search-filetype"
+          class="bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-300">
+          <option value="">All types</option>
+          <option value="pdf">PDF</option>
+          <option value="docx">DOCX</option>
+          <option value="txt">TXT</option>
+          <option value="py">Python</option>
+          <option value="xlsx">Excel</option>
+          <option value="csv">CSV</option>
+          <option value="html">HTML</option>
+          <option value="md">Markdown</option>
+        </select>
+        <button type="submit"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
+          Search
+        </button>
+      </form>
+      <div id="search-status" class="text-sm text-gray-400 mb-3 hidden"></div>
+      <div id="search-results" class="space-y-3"></div>
+    </div>
+
+    <!-- ===== CHAT TAB ===== -->
+    <div id="tab-chat" hidden>
+      <div id="chat-messages" class="space-y-4 mb-4 min-h-32"></div>
+      <form id="chat-form" class="flex gap-2" onsubmit="doChat(event)">
+        <input id="chat-input" type="text" placeholder="Ask a question about your files…"
+          class="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        <button type="submit" id="chat-send"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
+          Send
+        </button>
+      </form>
+      <button onclick="clearChat()" class="mt-2 text-xs text-gray-500 hover:text-gray-300">Clear conversation</button>
+    </div>
+
+    <!-- ===== FILES TAB ===== -->
+    <div id="tab-files" hidden>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex gap-2">
+          <select id="files-filetype"
+            class="bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-300">
+            <option value="">All types</option>
+            <option value="pdf">PDF</option>
+            <option value="docx">DOCX</option>
+            <option value="txt">TXT</option>
+            <option value="py">Python</option>
+            <option value="xlsx">Excel</option>
+            <option value="csv">CSV</option>
+            <option value="html">HTML</option>
+            <option value="md">Markdown</option>
+          </select>
+          <button onclick="loadFiles(0)" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm">Filter</button>
+        </div>
+        <div class="flex gap-2">
+          <button id="files-prev" onclick="filesPage(-1)" disabled
+            class="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-3 py-1 rounded text-sm">← Prev</button>
+          <span id="files-page-info" class="text-sm text-gray-400 py-1 px-2">Page 1</span>
+          <button id="files-next" onclick="filesPage(1)"
+            class="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-3 py-1 rounded text-sm">Next →</button>
+        </div>
+      </div>
+      <div id="files-table-wrap"></div>
+    </div>
+
+  </main>
+
+<script>
+// ─── Tab switching ────────────────────────────────────────────────────────────
+const TABS = ['search', 'chat', 'files'];
+function showTab(name) {
+  TABS.forEach(t => {
+    document.getElementById('tab-' + t).hidden = (t !== name);
+    const btn = document.getElementById('tab-btn-' + t);
+    if (t === name) {
+      btn.classList.add('tab-active');
+      btn.classList.remove('text-gray-400');
+    } else {
+      btn.classList.remove('tab-active');
+      btn.classList.add('text-gray-400');
+    }
+  });
+  if (name === 'files') loadFiles(filesOffset);
+}
+
+// ─── Health check ─────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch('/health');
+    const d = await r.json();
+    const el = document.getElementById('health-badge');
+    if (d.status === 'ok') {
+      el.textContent = `${d.indexed_files} files • qdrant ${d.qdrant}`;
+      el.className = 'text-xs px-2 py-1 rounded bg-green-900 text-green-300';
+    } else {
+      el.textContent = 'degraded';
+      el.className = 'text-xs px-2 py-1 rounded bg-yellow-900 text-yellow-300';
+    }
+  } catch {
+    const el = document.getElementById('health-badge');
+    el.textContent = 'offline';
+    el.className = 'text-xs px-2 py-1 rounded bg-red-900 text-red-300';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+
+// ─── FILETTYPE badge colors ───────────────────────────────────────────────────
+const TYPE_COLORS = {
+  pdf: 'bg-red-800 text-red-200',
+  docx: 'bg-blue-800 text-blue-200',
+  pptx: 'bg-orange-800 text-orange-200',
+  xlsx: 'bg-green-800 text-green-200',
+  csv: 'bg-teal-800 text-teal-200',
+  py: 'bg-yellow-800 text-yellow-200',
+  js: 'bg-yellow-700 text-yellow-100',
+  html: 'bg-pink-800 text-pink-200',
+  md: 'bg-purple-800 text-purple-200',
+  txt: 'bg-gray-700 text-gray-200',
+};
+function typeColor(ft) {
+  return TYPE_COLORS[ft] || 'bg-gray-700 text-gray-300';
+}
+function typeBadge(ft) {
+  return `<span class="text-xs px-1.5 py-0.5 rounded font-mono ${typeColor(ft)}">${ft}</span>`;
+}
+function statusBadge(s) {
+  const cls = s === 'indexed' ? 'bg-green-800 text-green-200'
+            : s === 'error'   ? 'bg-red-800 text-red-200'
+                              : 'bg-yellow-800 text-yellow-200';
+  return `<span class="text-xs px-1.5 py-0.5 rounded ${cls}">${s}</span>`;
+}
+function fmtBytes(b) {
+  if (!b) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+// ─── SEARCH ───────────────────────────────────────────────────────────────────
+async function doSearch(e) {
+  e.preventDefault();
+  const q = document.getElementById('search-q').value.trim();
+  if (!q) return;
+  const ft = document.getElementById('search-filetype').value;
+  const status = document.getElementById('search-status');
+  const results = document.getElementById('search-results');
+  status.textContent = 'Searching…';
+  status.classList.remove('hidden');
+  results.innerHTML = '';
+
+  try {
+    let url = `/search?q=${encodeURIComponent(q)}&top_k=10`;
+    if (ft) url += `&filetype=${encodeURIComponent(ft)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    status.textContent = `${d.results.length} result(s) in ${d.took_ms.toFixed(1)} ms`;
+    if (!d.results.length) {
+      results.innerHTML = '<p class="text-gray-500 text-sm">No results found.</p>';
+      return;
+    }
+    results.innerHTML = d.results.map(res => `
+      <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <div class="flex items-start justify-between gap-2 mb-1">
+          <span class="font-medium text-gray-100 truncate">${escHtml(res.filename)}</span>
+          ${typeBadge(res.filetype)}
+        </div>
+        <div class="text-xs text-gray-400 mb-2 truncate">${escHtml(res.file_path)}</div>
+        <div class="flex items-center gap-2 mb-2">
+          <div class="h-1.5 flex-1 bg-gray-700 rounded overflow-hidden">
+            <div class="h-full bg-blue-500 score-bar" style="width:${Math.round(res.score * 100)}%"></div>
+          </div>
+          <span class="text-xs text-gray-400">${(res.score * 100).toFixed(0)}%</span>
+        </div>
+        <p class="text-sm text-gray-300 line-clamp-3">${escHtml(res.snippet)}</p>
+        <button onclick="reindex('${escAttr(res.file_path)}')" class="mt-2 text-xs text-blue-400 hover:text-blue-300">
+          Re-index
+        </button>
+      </div>
+    `).join('');
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+    status.classList.add('text-red-400');
+  }
+}
+
+// ─── CHAT ─────────────────────────────────────────────────────────────────────
+let chatHistory = [];
+
+function clearChat() {
+  chatHistory = [];
+  document.getElementById('chat-messages').innerHTML = '';
+}
+
+function appendMessage(role, html) {
+  const div = document.createElement('div');
+  div.className = role === 'user'
+    ? 'flex justify-end'
+    : 'flex justify-start';
+  const bubble = document.createElement('div');
+  bubble.className = role === 'user'
+    ? 'bg-blue-700 text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-2xl text-sm'
+    : 'bg-gray-800 text-gray-100 rounded-2xl rounded-tl-sm px-4 py-2 max-w-2xl text-sm prose-dark';
+  bubble.innerHTML = html;
+  div.appendChild(bubble);
+  document.getElementById('chat-messages').appendChild(div);
+  div.scrollIntoView({behavior: 'smooth', block: 'end'});
+  return bubble;
+}
+
+async function doChat(e) {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  document.getElementById('chat-send').disabled = true;
+
+  appendMessage('user', escHtml(msg));
+  const bubble = appendMessage('assistant', '<span class="animate-pulse text-gray-400">…</span>');
+  let fullText = '';
+
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg, history: chatHistory, top_k: 5}),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream: true});
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data:')) continue;
+        let data;
+        try { data = JSON.parse(part.slice(5).trim()); } catch { continue; }
+        if (data.error) {
+          bubble.innerHTML = `<span class="text-red-400">Error: ${escHtml(data.error)}</span>`;
+          break;
+        }
+        if (data.token) {
+          fullText += data.token;
+          bubble.innerHTML = marked.parse(fullText);
+        }
+        if (data.done) break;
+      }
+    }
+
+    chatHistory.push({role: 'user', content: msg});
+    chatHistory.push({role: 'assistant', content: fullText});
+  } catch (err) {
+    bubble.innerHTML = `<span class="text-red-400">Error: ${escHtml(err.message)}</span>`;
+  } finally {
+    document.getElementById('chat-send').disabled = false;
+    input.focus();
+  }
+}
+
+// ─── FILES ────────────────────────────────────────────────────────────────────
+const FILES_LIMIT = 50;
+let filesOffset = 0;
+let filesHasMore = true;
+
+async function loadFiles(offset) {
+  filesOffset = offset;
+  const ft = document.getElementById('files-filetype').value;
+  let url = `/files?limit=${FILES_LIMIT}&offset=${offset}`;
+  if (ft) url += `&filetype=${encodeURIComponent(ft)}`;
+
+  const wrap = document.getElementById('files-table-wrap');
+  wrap.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+
+  try {
+    const r = await fetch(url);
+    const items = await r.json();
+    filesHasMore = items.length === FILES_LIMIT;
+    document.getElementById('files-prev').disabled = offset === 0;
+    document.getElementById('files-next').disabled = !filesHasMore;
+    const page = Math.floor(offset / FILES_LIMIT) + 1;
+    document.getElementById('files-page-info').textContent = `Page ${page}`;
+
+    if (!items.length) {
+      wrap.innerHTML = '<p class="text-gray-500 text-sm">No files indexed yet.</p>';
+      return;
+    }
+
+    const rows = items.map(f => `
+      <tr class="border-b border-gray-700 hover:bg-gray-750">
+        <td class="py-2 px-3 text-sm text-gray-200 max-w-xs truncate" title="${escAttr(f.path)}">${escHtml(f.filename)}</td>
+        <td class="py-2 px-3">${typeBadge(f.filetype)}</td>
+        <td class="py-2 px-3 text-xs text-gray-400">${fmtBytes(f.size_bytes)}</td>
+        <td class="py-2 px-3 text-xs text-gray-400">${f.indexed_at ? f.indexed_at.replace('T', ' ').slice(0, 16) : '—'}</td>
+        <td class="py-2 px-3">${statusBadge(f.status)}</td>
+        <td class="py-2 px-3">
+          <button onclick="reindex('${escAttr(f.path)}')" id="reindex-${escAttr(f.id)}"
+            class="text-xs text-blue-400 hover:text-blue-300">Re-index</button>
+        </td>
+      </tr>
+    `).join('');
+
+    wrap.innerHTML = `
+      <table class="w-full text-left">
+        <thead>
+          <tr class="text-xs text-gray-500 uppercase border-b border-gray-700">
+            <th class="py-2 px-3">File</th>
+            <th class="py-2 px-3">Type</th>
+            <th class="py-2 px-3">Size</th>
+            <th class="py-2 px-3">Indexed at</th>
+            <th class="py-2 px-3">Status</th>
+            <th class="py-2 px-3"></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } catch (err) {
+    wrap.innerHTML = `<p class="text-red-400 text-sm">Error: ${escHtml(err.message)}</p>`;
+  }
+}
+
+function filesPage(dir) {
+  const next = filesOffset + dir * FILES_LIMIT;
+  if (next < 0) return;
+  if (dir > 0 && !filesHasMore) return;
+  loadFiles(next);
+}
+
+// ─── Re-index ─────────────────────────────────────────────────────────────────
+async function reindex(path) {
+  try {
+    const r = await fetch('/index', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path}),
+    });
+    const d = await r.json();
+    alert(`Re-index: ${d.status}${d.chunks ? ' (' + d.chunks + ' chunks)' : ''}${d.error ? '\n' + d.error : ''}`);
+    if (document.getElementById('tab-files') && !document.getElementById('tab-files').hidden) {
+      loadFiles(filesOffset);
+    }
+  } catch (err) {
+    alert('Re-index error: ' + err.message);
+  }
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function escAttr(s) {
+  return String(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

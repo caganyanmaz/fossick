@@ -156,7 +156,7 @@ class VectorStore:
             FieldCondition(key=k, match=MatchValue(value=v))
             for k, v in filters.items()
         ]
-        return Filter(must=conditions)
+        return Filter(must=conditions)  # type: ignore[arg-type]
 
     async def search(
         self,
@@ -214,7 +214,7 @@ class VectorStore:
             return
         await self._cli.delete(
             collection_name=self._config.collection,
-            points_selector=PointIdsList(points=point_ids),
+            points_selector=PointIdsList(points=point_ids),  # type: ignore[arg-type]
             wait=True,
         )
         logger.debug("deleted {} points", len(point_ids))

@@ -117,7 +117,7 @@ class VideoParser(BaseParser):
                 timeout=120.0,
             )
             response.raise_for_status()
-            return response.json().get("text", "")
+            return str(response.json().get("text", ""))
         except Exception as exc:
             logger.warning("Whisper API call failed for {}: {}", path, exc)
             return ""

@@ -201,6 +201,15 @@ class MetadataStore:
             )
         logger.debug("saved {} chunks for file_id={}", len(chunks), file_id)
 
+    async def get_chunk_qdrant_ids(self, file_id: int) -> list[str]:
+        async with self._eng.begin() as conn:
+            result = await conn.execute(
+                text("SELECT qdrant_id FROM chunks WHERE file_id=:fid"),
+                {"fid": file_id},
+            )
+            rows = result.fetchall()
+        return [r[0] for r in rows]
+
     async def delete_file(self, path: str) -> None:
         async with self._eng.begin() as conn:
             await conn.execute(
